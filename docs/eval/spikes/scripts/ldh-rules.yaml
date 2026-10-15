@@ -1,0 +1,163 @@
+rules:
+  # ---------- Taint rules (intraprocedural, Semgrep CE engine) ----------
+  - id: ldh-llm-call-to-response-attr
+    mode: taint
+    languages: [python]
+    message: Model response attribute consumed after LLM call (LDH)
+    severity: INFO
+    pattern-sources:
+      - patterns:
+          - pattern: $LLM.ainvoke(...)
+          - metavariable-regex:
+              metavariable: $LLM
+              regex: (?i).*llm.*
+      - patterns:
+          - pattern: $LLM.invoke(...)
+          - metavariable-regex:
+              metavariable: $LLM
+              regex: (?i).*llm.*
+    pattern-sinks:
+      - patterns:
+          - pattern: $RESP.$ATTR
+          - metavariable-regex:
+              metavariable: $ATTR
+              regex: ^(completion|content|choices|usage|role|model_dump|model_dump_json|text)$
+      - pattern: json.loads($RESP)
+      - pattern: json.dumps($RESP)
+      - pattern: $RESP.model_validate($X)
+      - pattern: $RESP.model_validate_json($X)
+
+  - id: ldh-openai-create-to-response-attr
+    mode: taint
+    languages: [python]
+    message: Chat completions response consumed (LDH)
+    severity: INFO
+    pattern-sources:
+      - pattern: $CLIENT.chat.completions.create(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: $RESP.$ATTR
+          - metavariable-regex:
+              metavariable: $ATTR
+              regex: ^(choices|content|message|usage|model_dump)$
+      - pattern: json.loads($RESP)
+
+  - id: ldh-litellm-to-response-attr
+    mode: taint
+    languages: [python]
+    message: litellm response consumed (LDH)
+    severity: INFO
+    pattern-sources:
+      - pattern: litellm.completion(...)
+      - pattern: litellm.acompletion(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: $RESP.$ATTR
+          - metavariable-regex:
+              metavariable: $ATTR
+              regex: ^(choices|content|message|usage|model_dump)$
+      - pattern: json.loads($RESP)
+
+  - id: ldh-harness-call-return-to-state
+    mode: taint
+    languages: [python]
+    message: Harness model-output call result mutated into agent state (LDH)
+    severity: INFO
+    pattern-sources:
+      - pattern: self.get_model_output(...)
+      - pattern: self._get_model_output_with_retry(...)
+      - pattern: self.multi_act(...)
+    pattern-sinks:
+      - pattern: self.state.$ATTR
+      - pattern: self.state.$ATTR = $V
+
+  # ---------- Pattern rules (name-based heuristics, no taint) ----------
+  - id: ldh-action-model-access
+    languages: [python]
+    message: Model-output artifact named action/parsed/model_output is accessed (LDH)
+    severity: INFO
+    patterns:
+      - pattern: $V.$F(...)
+      - metavariable-regex:
+          metavariable: $V
+          regex: ^(action|actions|action_data|action_params|parsed|model_output|model_outputs|response|validated_params|params|params_dict|action_result|result|results|last_result|r)$
+      - metavariable-regex:
+          metavariable: $F
+          regex: ^(model_dump|model_dump_json|model_validate|model_validate_json|get|keys|values|items|append|extend)$
+
+  - id: ldh-response-field-attribute
+    languages: [python]
+    message: Model-output field attribute access (LDH)
+    severity: INFO
+    pattern-either:
+      - patterns:
+          - pattern: $V.$F
+          - metavariable-regex:
+              metavariable: $V
+              regex: ^(parsed|model_output|model_outputs|response|action_data|action_params|validated_params)$
+          - metavariable-regex:
+              metavariable: $F
+              regex: ^(action|completion|content|choices|thinking|memory|next_goal|evaluation_previous_goal|current_plan_item|plan_update|current_state|error|is_done|success|extracted_content|long_term_memory|metadata|attachments|images|judgement)$
+      - patterns:
+          - pattern: $H.model_output.$F
+          - metavariable-regex:
+              metavariable: $F
+              regex: ^(action|completion|thinking|memory|next_goal|evaluation_previous_goal|current_state)$
+
+  - id: ldh-action-result-field
+    languages: [python]
+    message: ActionResult field consumed (LDH, action-derived)
+    severity: INFO
+    patterns:
+      - pattern: $V.$F
+      - metavariable-regex:
+          metavariable: $V
+          regex: ^(action_result|last_result|result|results|r)$
+      - metavariable-regex:
+          metavariable: $F
+          regex: ^(error|is_done|success|extracted_content|long_term_memory|metadata|attachments|images|judgement|include_extracted_content_only_once)$
+
+  - id: ldh-action-dispatch-lookup
+    languages: [python]
+    message: Dispatch lookup keyed by model-provided action name (LDH)
+    severity: INFO
+    pattern-either:
+      - patterns:
+          - pattern: $REG.actions.get($NAME)
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: ^(action_name|action_type|name)$
+      - patterns:
+          - pattern: $REG.actions[$NAME]
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: ^(action_name|action_type|name)$
+      - patterns:
+          - pattern: $DATA.get($KEY)
+          - metavariable-regex:
+              metavariable: $DATA
+              regex: ^(action_data|action_params|params_dict)$
+      - pattern: getattr($OBJ, action_name)
+
+  - id: ldh-param-field-access
+    languages: [python]
+    message: Validated action param field consumed (LDH)
+    severity: INFO
+    patterns:
+      - pattern: $P.$F
+      - metavariable-regex:
+          metavariable: $P
+          regex: ^(params|validated_params)$
+      - metavariable-regex:
+          metavariable: $F
+          regex: ^(query|engine|url|new_tab|index|text|clear|path|coordinate_x|coordinate_y|seconds|action|name)$
+
+  - id: ldh-json-loads-model-text
+    languages: [python]
+    message: json.loads over model text (LDH)
+    severity: INFO
+    patterns:
+      - pattern: json.loads($X)
+      - metavariable-regex:
+          metavariable: $X
+          regex: (?i).*(model_output|parsed|response|completion|action)..
