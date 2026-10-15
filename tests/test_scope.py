@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from harnessprobe.scope import derive_scope
+from harnessprobe.scope import SourceSite, derive_scope
 
 MINI_LINE_MAP = {
     "mini_repo/agent.py": {14, 18, 21},
@@ -36,6 +36,50 @@ def test_mini_repo_total_lines_and_warnings(fixtures_root: Path) -> None:
     scope = derive_scope(fixtures_root)
     assert scope.total_lines == 19
     assert scope.warnings == ()
+
+
+MINI_SOURCES = (
+    SourceSite(kind="model_call", path="mini_repo/agent.py", line=14),
+    SourceSite(kind="annotation", path="mini_repo/text_tools.py", line=11),
+    SourceSite(kind="annotation", path="mini_repo/unrelated.py", line=10),
+    SourceSite(kind="annotation", path="mini_repo/unrelated.py", line=14),
+)
+
+
+def test_mini_repo_sources_are_exact(fixtures_root: Path) -> None:
+    scope = derive_scope(fixtures_root)
+    assert scope.sources == MINI_SOURCES
+
+
+def test_mini_repo_sources_sorted_by_path_line_kind(fixtures_root: Path) -> None:
+    scope = derive_scope(fixtures_root)
+    keys = [(site.path, site.line, site.kind) for site in scope.sources]
+    assert keys == sorted(keys)
+
+
+def test_sources_empty_when_no_calls_or_annotations(tmp_path: Path) -> None:
+    (tmp_path / "plain.py").write_text("def f(x):\n    return x + 1\n")
+    scope = derive_scope(tmp_path)
+    assert scope.sources == ()
+    assert scope.files == ()
+
+
+def test_module_level_model_call_is_a_source(tmp_path: Path) -> None:
+    (tmp_path / "top.py").write_text(
+        "MODEL = llm.invoke\nclient.chat.completions.create(model='m')\n"
+    )
+    scope = derive_scope(tmp_path)
+    assert scope.sources == (SourceSite(kind="model_call", path="top.py", line=2),)
+
+
+def test_allowlisted_file_sources_are_still_collected(tmp_path: Path) -> None:
+    (tmp_path / "w.py").write_text("def ask(c):\n    return c.chat.completions.create(model='m')\n")
+    scope = derive_scope(tmp_path, allowlist=["w.py"])
+    assert scope.sources == (SourceSite(kind="model_call", path="w.py", line=2),)
+
+
+def test_no_tier_b_leaves_sources_unchanged(fixtures_root: Path) -> None:
+    assert derive_scope(fixtures_root, include_tier_b=False).sources == MINI_SOURCES
 
 
 def test_paths_lines_and_reasons_are_sorted(fixtures_root: Path) -> None:

@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2.7"]
 
+[project.scripts]
+harnessprobe = "harnessprobe.cli:main"
+
 [dependency-groups]
 dev = ["pytest", "pytest-cov", "ruff"]
 

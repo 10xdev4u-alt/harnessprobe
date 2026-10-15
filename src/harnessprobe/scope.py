@@ -50,11 +50,21 @@ class FileScope:
 
 
 @dataclass(frozen=True)
+class SourceSite:
+    """One observed evidence site: a model call or an annotation."""
+
+    kind: str
+    path: str
+    line: int
+
+
+@dataclass(frozen=True)
 class Scope:
     """Heuristic LDH scope over a repository."""
 
     files: tuple[FileScope, ...]
     warnings: tuple[str, ...]
+    sources: tuple[SourceSite, ...] = ()
 
     def line_map(self) -> dict[str, set[int]]:
         """Return a path to line-set mapping for every scoped file."""
@@ -75,6 +85,7 @@ def derive_scope(
     """Extract the heuristic LDH scope for every Python file under repo_root."""
     files: list[FileScope] = []
     warnings: list[str] = []
+    sources: list[SourceSite] = []
     for path in sorted(repo_root.rglob("*.py")):
         rel = path.relative_to(repo_root).as_posix()
         allowlisted = any(fnmatch.fnmatchcase(rel, pattern) for pattern in allowlist)
@@ -86,6 +97,7 @@ def derive_scope(
         except (OSError, SyntaxError) as exc:
             warnings.append(f"skipped {rel}: {exc}")
             continue
+        sources.extend(_file_sources(tree, source, rel=rel))
         lines, reasons = _file_scope(
             tree, source, allowlisted=allowlisted, include_tier_b=include_tier_b
         )
@@ -93,7 +105,8 @@ def derive_scope(
             files.append(
                 FileScope(path=rel, lines=tuple(sorted(lines)), reasons=tuple(sorted(reasons)))
             )
-    return Scope(files=tuple(files), warnings=tuple(warnings))
+    sources.sort(key=lambda site: (site.path, site.line, site.kind))
+    return Scope(files=tuple(files), warnings=tuple(warnings), sources=tuple(sources))
 
 
 def _is_skipped(rel: str) -> bool:
@@ -212,12 +225,29 @@ def _imports_shell_completion_libs(tree: ast.Module) -> bool:
     return False
 
 
-def _annotation_scope(tree: ast.Module, source: str) -> tuple[set[int], set[int]]:
-    marked = {
+def _file_sources(tree: ast.Module, source: str, *, rel: str) -> list[SourceSite]:
+    sites = [
+        SourceSite(kind="model_call", path=rel, line=node.lineno)
+        for node in ast.walk(tree)
+        if _is_model_call(node)
+    ]
+    sites.extend(
+        SourceSite(kind="annotation", path=rel, line=number)
+        for number in _marked_annotation_lines(source)
+    )
+    return sites
+
+
+def _marked_annotation_lines(source: str) -> set[int]:
+    return {
         number
         for number, line in enumerate(source.splitlines(), start=1)
         if ANNOTATION_RE.search(line)
     }
+
+
+def _annotation_scope(tree: ast.Module, source: str) -> tuple[set[int], set[int]]:
+    marked = _marked_annotation_lines(source)
     if not marked:
         return set(), set()
     defs = {
