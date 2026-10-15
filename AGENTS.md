@@ -195,6 +195,10 @@ ADRs; prototypes are welcome and expected (`prototype`, `architecture` skills).
 - Architectural decisions land as ADRs under `docs/adr/`.
 - Research lands under `docs/research/` with citations and access dates.
 - Dead ends are recorded, not deleted: they become evaluation notes.
+- Spike sandboxes: run third-party repo suites with a scrubbed environment
+  (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `FX_*` and similar unset), an
+  isolated `HOME` where practical, browser- and network-gated tests excluded by
+  selection, and never open GUI applications on the operator's desktop.
 - Context discipline: delegate bulk reading to subagents; main thread keeps
   decisions and diffs only.
 
