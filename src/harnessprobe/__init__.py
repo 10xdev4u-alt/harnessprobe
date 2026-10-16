@@ -6,6 +6,7 @@ import importlib
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from harnessprobe.comment import BugFinding, Findings, render_pr_comment
     from harnessprobe.coverage_subset import subset_coverage
     from harnessprobe.report import FileSubsetReport, SubsetReport, SubsetTotals, UncoveredSample
     from harnessprobe.scope import FileScope, Scope, SourceSite, derive_scope
@@ -21,8 +22,10 @@ if TYPE_CHECKING:
 __version__ = "0.1.0"
 
 __all__ = [
+    "BugFinding",
     "FileScope",
     "FileSubsetReport",
+    "Findings",
     "Scope",
     "ScopeFile",
     "ScopeFileEntry",
@@ -34,14 +37,17 @@ __all__ = [
     "__version__",
     "build_scope_file",
     "derive_scope",
+    "render_pr_comment",
     "scope_from_file",
     "subset_coverage",
     "write_scope_file",
 ]
 
 _EXPORTS = {
+    "BugFinding": "harnessprobe.comment",
     "FileScope": "harnessprobe.scope",
     "FileSubsetReport": "harnessprobe.report",
+    "Findings": "harnessprobe.comment",
     "Scope": "harnessprobe.scope",
     "ScopeFile": "harnessprobe.scopefile",
     "ScopeFileEntry": "harnessprobe.scopefile",
@@ -52,6 +58,7 @@ _EXPORTS = {
     "UncoveredSample": "harnessprobe.report",
     "build_scope_file": "harnessprobe.scopefile",
     "derive_scope": "harnessprobe.scope",
+    "render_pr_comment": "harnessprobe.comment",
     "scope_from_file": "harnessprobe.scopefile",
     "subset_coverage": "harnessprobe.coverage_subset",
     "write_scope_file": "harnessprobe.scopefile",

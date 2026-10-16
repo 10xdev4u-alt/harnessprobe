@@ -8,6 +8,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from harnessprobe import __version__
+from harnessprobe.comment import load_findings, render_pr_comment
+from harnessprobe.report import SubsetReport
 from harnessprobe.scope import derive_scope
 from harnessprobe.scopefile import CONFIDENCE_ORDER, ScopeFile, build_scope_file, write_scope_file
 
@@ -15,6 +17,8 @@ from harnessprobe.scopefile import CONFIDENCE_ORDER, ScopeFile, build_scope_file
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI and return the process exit code."""
     args = _build_parser().parse_args(argv)
+    if args.command == "comment":
+        return _run_comment(args)
     return _run_init(args)
 
 
@@ -42,7 +46,67 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--out", type=Path, default=None, metavar="PATH", help="Scope file path."
     )
+    comment_parser = subparsers.add_parser(
+        "comment", help="Render a bug-class-first PR comment from a report."
+    )
+    comment_parser.add_argument(
+        "--report", type=Path, required=True, metavar="PATH", help="Coverage subset report JSON."
+    )
+    comment_parser.add_argument(
+        "--findings",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Findings JSON attached to this run.",
+    )
+    comment_parser.add_argument(
+        "--previous",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Previous coverage subset report JSON for the trend.",
+    )
+    comment_parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Write the comment here instead of stdout.",
+    )
     return parser
+
+
+def _run_comment(args: argparse.Namespace) -> int:
+    try:
+        report = _load_report(args.report, "report")
+        findings = load_findings(args.findings) if args.findings is not None else []
+        previous = (
+            _load_report(args.previous, "previous report") if args.previous is not None else None
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    comment = render_pr_comment(report, findings=findings, previous=previous)
+    if args.out is None:
+        sys.stdout.write(comment)
+        return 0
+    try:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(comment, encoding="utf-8")
+    except OSError as exc:
+        print(f"error: cannot write {args.out}: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _load_report(path: Path, label: str) -> SubsetReport:
+    try:
+        text = path.read_text(encoding="utf-8")
+        return SubsetReport.from_json(text)
+    except OSError as exc:
+        raise ValueError(f"cannot read {label} {path}: {exc}") from exc
+    except ValueError as exc:
+        raise ValueError(f"invalid {label} {path}: {exc}") from exc
 
 
 def _run_init(args: argparse.Namespace) -> int:
