@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from harnessprobe.ci import (
+    DEFAULT_COMMENT_AUTHOR,
     STICKY_MARKER,
     CommandResult,
     GateThresholds,
@@ -251,7 +252,12 @@ def test_post_sticky_comment_creates_when_missing(tmp_path: Path) -> None:
 
 def test_post_sticky_comment_updates_existing(tmp_path: Path) -> None:
     body_path = body_file(tmp_path)
-    page = json.dumps([{"id": 1, "body": "other"}, {"id": 2, "body": STICKY_BODY}])
+    page = json.dumps(
+        [
+            {"id": 1, "body": "other", "user": {"login": "github-actions[bot]"}},
+            {"id": 2, "body": STICKY_BODY, "user": {"login": "github-actions[bot]"}},
+        ]
+    )
     calls, runner = make_runner(
         [
             CommandResult(0, page, ""),
@@ -273,7 +279,12 @@ def test_post_sticky_comment_updates_existing(tmp_path: Path) -> None:
 
 def test_post_sticky_comment_updates_latest_match(tmp_path: Path) -> None:
     body_path = body_file(tmp_path)
-    page = json.dumps([{"id": 10, "body": STICKY_BODY}, {"id": 11, "body": STICKY_BODY}])
+    page = json.dumps(
+        [
+            {"id": 10, "body": STICKY_BODY, "user": {"login": "github-actions[bot]"}},
+            {"id": 11, "body": STICKY_BODY, "user": {"login": "github-actions[bot]"}},
+        ]
+    )
     calls, runner = make_runner([CommandResult(0, page, ""), CommandResult(0, "{}", "")])
     outcome = post_sticky_comment(repo="o/r", pr_number=5, body_path=body_path, runner=runner)
     assert calls[1][4] == "repos/o/r/issues/comments/11"
@@ -283,7 +294,9 @@ def test_post_sticky_comment_updates_latest_match(tmp_path: Path) -> None:
 def test_post_sticky_comment_parses_concatenated_pages(tmp_path: Path) -> None:
     body_path = body_file(tmp_path)
     page_one = json.dumps([{"id": 1, "body": "other"}])
-    page_two = json.dumps([{"id": 2, "body": STICKY_BODY}])
+    page_two = json.dumps(
+        [{"id": 2, "body": STICKY_BODY, "user": {"login": "github-actions[bot]"}}]
+    )
     calls, runner = make_runner(
         [
             CommandResult(0, f"{page_one}\n{page_two}\n", ""),
@@ -332,6 +345,49 @@ def test_post_sticky_comment_rejects_unparsable_response(tmp_path: Path, stdout:
     _, runner = make_runner([CommandResult(0, "[]", ""), CommandResult(0, stdout, "")])
     with pytest.raises(ValueError, match="cannot parse gh comment response"):
         post_sticky_comment(repo="o/r", pr_number=5, body_path=body_file(tmp_path), runner=runner)
+
+
+def test_post_sticky_comment_ignores_human_quotes(tmp_path: Path) -> None:
+    body_path = body_file(tmp_path)
+    page = json.dumps([{"id": 9, "body": f"quoting {STICKY_BODY}", "user": {"login": "a-human"}}])
+    calls, runner = make_runner(
+        [CommandResult(0, page, ""), CommandResult(0, '{"id": 12, "html_url": "u"}', "")]
+    )
+    assert DEFAULT_COMMENT_AUTHOR == "github-actions[bot]"
+    outcome = post_sticky_comment(repo="o/r", pr_number=5, body_path=body_path, runner=runner)
+    assert outcome.action == "created"
+    assert calls[1][2] == "repos/o/r/issues/5/comments"
+
+
+def test_post_sticky_comment_skips_missing_author_metadata(tmp_path: Path) -> None:
+    body_path = body_file(tmp_path)
+    page = json.dumps([{"id": 9, "body": STICKY_BODY}, {"id": 3, "user": "not-a-mapping"}])
+    calls, runner = make_runner([CommandResult(0, page, ""), CommandResult(0, "{}", "")])
+    outcome = post_sticky_comment(repo="o/r", pr_number=5, body_path=body_path, runner=runner)
+    assert outcome.action == "created"
+
+
+def test_post_sticky_comment_honors_author_override(tmp_path: Path) -> None:
+    body_path = body_file(tmp_path)
+    page = json.dumps([{"id": 4, "body": STICKY_BODY, "user": {"login": "ci-bot"}}])
+    calls, runner = make_runner([CommandResult(0, page, ""), CommandResult(0, "{}", "")])
+    outcome = post_sticky_comment(
+        repo="o/r", pr_number=5, body_path=body_path, runner=runner, author="ci-bot"
+    )
+    assert outcome.action == "updated"
+    assert calls[1][4] == "repos/o/r/issues/comments/4"
+
+
+def test_run_gh_wraps_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise FileNotFoundError("gh")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    with pytest.raises(ValueError, match="gh failed: gh") as excinfo:
+        _run_gh(["gh", "--version"])
+    assert isinstance(excinfo.value.__cause__, FileNotFoundError)
 
 
 def test_post_sticky_comment_dry_run_skips_runner(tmp_path: Path) -> None:

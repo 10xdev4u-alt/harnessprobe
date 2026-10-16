@@ -12,6 +12,7 @@ from typing import Literal
 from harnessprobe.report import SubsetReport, SubsetTotals
 
 STICKY_MARKER = "_harnessprobe · report "
+DEFAULT_COMMENT_AUTHOR = "github-actions[bot]"
 
 
 @dataclass(frozen=True)
@@ -182,12 +183,13 @@ def post_sticky_comment(
     body_path: Path,
     runner: GhRunner | None = None,
     dry_run: bool = False,
+    author: str = DEFAULT_COMMENT_AUTHOR,
 ) -> PostOutcome:
     """Create or update the sticky PR comment through the gh CLI."""
     if dry_run:
         return PostOutcome("dry-run", None, None)
     run = _run_gh if runner is None else runner
-    comment_id = _find_sticky_comment(run, repo=repo, pr_number=pr_number)
+    comment_id = _find_sticky_comment(run, repo=repo, pr_number=pr_number, author=author)
     if comment_id is None:
         argv = [
             "gh",
@@ -214,8 +216,10 @@ def post_sticky_comment(
     return PostOutcome(action, returned_id, url)
 
 
-def _find_sticky_comment(run: GhRunner, *, repo: str, pr_number: int) -> int | None:
-    """Return the id of the latest sticky comment, if any."""
+def _find_sticky_comment(
+    run: GhRunner, *, repo: str, pr_number: int, author: str
+) -> int | None:
+    """Return the id of the latest sticky comment authored by author, if any."""
     argv = [
         "gh",
         "api",
@@ -233,9 +237,20 @@ def _find_sticky_comment(run: GhRunner, *, repo: str, pr_number: int) -> int | N
             body = item.get("body")
             if not isinstance(comment_id, int) or isinstance(comment_id, bool):
                 continue
+            if _comment_author(item) != author:
+                continue
             if isinstance(body, str) and is_sticky_body(body):
                 latest = comment_id
     return latest
+
+
+def _comment_author(item: Mapping[object, object]) -> str | None:
+    """Return the author login when the comment payload carries one."""
+    user = item.get("user")
+    if not isinstance(user, Mapping):
+        return None
+    login = user.get("login")
+    return login if isinstance(login, str) else None
 
 
 def _parse_comment_pages(stdout: str) -> list[list[object]]:
@@ -284,5 +299,8 @@ def _check_gh(result: CommandResult, argv: Sequence[str]) -> None:
 
 def _run_gh(argv: Sequence[str]) -> CommandResult:
     """Run gh with captured output and no shell."""
-    proc = subprocess.run(list(argv), capture_output=True, text=True, check=False)
+    try:
+        proc = subprocess.run(list(argv), capture_output=True, text=True, check=False)
+    except OSError as exc:
+        raise ValueError(f"gh failed: {exc}") from exc
     return CommandResult(returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)

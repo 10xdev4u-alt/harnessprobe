@@ -80,9 +80,16 @@ The gate, run with the same flags the action passes:
 ```console
 $ harnessprobe gate --report .../bu-report.json --min-coverage 30 --max-uncovered 1000 \
     --summary-out .../bu-gate.md --outputs .../bu-outputs.txt
-HarnessProbe gate: passed
-covered-pct=34.37  scope-lines=1286  executed=442  uncovered=844
-not-measured=530   findings-count=0  gate-passed=true  gate-reasons=
+harnessprobe gate: passed
+$ cat .../bu-outputs.txt
+covered-pct=34.37
+scope-lines=1286
+executed=442
+uncovered=844
+not-measured=530
+findings-count=0
+gate-passed=true
+gate-reasons=
 ```
 
 Comment rendering (identical input goes into the action's sticky comment):

@@ -10,7 +10,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from harnessprobe import __version__
-from harnessprobe.ci import GateThresholds, evaluate_gate, post_sticky_comment, write_outputs
+from harnessprobe.ci import (
+    DEFAULT_COMMENT_AUTHOR,
+    GateThresholds,
+    evaluate_gate,
+    post_sticky_comment,
+    write_outputs,
+)
 from harnessprobe.comment import load_findings, render_pr_comment
 from harnessprobe.report import SubsetReport
 from harnessprobe.scope import derive_scope
@@ -163,6 +169,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Also write the rendered comment body here.",
     )
     post_parser.add_argument("--dry-run", action="store_true", help="Render without calling gh.")
+    post_parser.add_argument(
+        "--comment-author",
+        default=DEFAULT_COMMENT_AUTHOR,
+        metavar="LOGIN",
+        help="Author whose existing comment is updated (default: github-actions[bot]).",
+    )
     return parser
 
 
@@ -266,7 +278,11 @@ def _run_post(args: argparse.Namespace) -> int:
             body_path = Path(tmp_dir) / "comment.md"
             body_path.write_text(comment, encoding="utf-8")
             outcome = post_sticky_comment(
-                repo=repo, pr_number=args.pr, body_path=body_path, dry_run=False
+                repo=repo,
+                pr_number=args.pr,
+                body_path=body_path,
+                dry_run=False,
+                author=args.comment_author,
             )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)

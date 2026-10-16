@@ -495,7 +495,15 @@ def test_post_updates_comment_and_prints_without_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     report_path = write_report(tmp_path / "report.json", mini_report)
-    page = json.dumps([{"id": 8, "body": "_harnessprobe · report harnessprobe.report/v1_"}])
+    page = json.dumps(
+        [
+            {
+                "id": 8,
+                "body": "_harnessprobe · report harnessprobe.report/v1_",
+                "user": {"login": "github-actions[bot]"},
+            }
+        ]
+    )
 
     def fake_run(argv: Sequence[str]) -> CommandResult:
         if argv[2] == "--paginate":
@@ -508,6 +516,47 @@ def test_post_updates_comment_and_prints_without_url(
     assert code == 0
     assert captured.out == "harnessprobe post: updated comment\n"
     assert captured.err == ""
+
+
+def test_post_comment_author_flag_selects_comment(
+    mini_report: SubsetReport,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report_path = write_report(tmp_path / "report.json", mini_report)
+    page = json.dumps(
+        [
+            {
+                "id": 21,
+                "body": "_harnessprobe · report harnessprobe.report/v1_",
+                "user": {"login": "ci-bot"},
+            }
+        ]
+    )
+
+    def fake_run(argv: Sequence[str]) -> CommandResult:
+        if argv[2] == "--paginate":
+            return CommandResult(0, page, "")
+        return CommandResult(0, "{}", "")
+
+    monkeypatch.setattr("harnessprobe.ci._run_gh", fake_run)
+    code = main(
+        [
+            "post",
+            "--report",
+            str(report_path),
+            "--pr",
+            "12",
+            "--repo",
+            "o/r",
+            "--comment-author",
+            "ci-bot",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.out == "harnessprobe post: updated comment\n"
 
 
 def test_post_gh_failure_exits_1(

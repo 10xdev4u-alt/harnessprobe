@@ -87,8 +87,8 @@ One comment per pull request, every push.
 
 The comment step needs `pull-requests: write` (the workflow above shows it) and
 runs only on `pull_request` events; `push` runs gate and summarize without
-commenting. Pull requests from forks get a read-only token, so set
-`comment: "false"` for untrusted forks.
+commenting. Pull requests from forks are skipped automatically: their token is
+read-only, so the action posts no comment there and still gates and summarizes.
 
 ## Findings
 
@@ -105,6 +105,9 @@ Findings lead the comment; coverage follows. The gate counts them for
   pip and `gh api` for the comment.
 - The token is the workflow's `github.token`; the action never persists or logs
   it. Grant only `contents: read` and `pull-requests: write`.
+- The job runs pull request code, so check out with
+  `persist-credentials: false` (shown in the example) to keep the token out of
+  `.git/config` where the tests could read it.
 - `harnessprobe-package` is installed with pip. Point it at a pinned ref when
   you override it.
 
