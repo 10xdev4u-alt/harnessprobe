@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from harnessprobe import scope_from_file
 from harnessprobe.scope import FileScope, Scope, derive_scope
 from harnessprobe.scopefile import (
     ScopeFile,
@@ -190,6 +191,17 @@ def test_entries_and_sources_are_sorted_and_deterministic(fixtures_root: Path) -
     for entry in first.files:
         assert entry.lines == sorted(entry.lines)
         assert entry.ldh_lines == len(entry.lines)
+
+
+def test_scope_from_file_round_trips_derived_scope(fixtures_root: Path) -> None:
+    scope = derive_scope(fixtures_root)
+    scope_file = build_scope_file(
+        scope, allowlist=[], include_tier_b=True, generated_by=GENERATED_BY
+    )
+    restored = scope_from_file(ScopeFile.from_json(scope_file.to_json()))
+    assert restored.files == scope.files
+    assert restored.warnings == scope.warnings
+    assert restored.sources == scope.sources
 
 
 def test_write_scope_file_writes_json(fixtures_root: Path, tmp_path: Path) -> None:

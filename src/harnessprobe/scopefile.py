@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from harnessprobe.scope import Scope
+from harnessprobe.scope import FileScope, Scope, SourceSite
 
 Confidence = Literal["authoritative", "allowlisted", "heuristic-high", "heuristic-low"]
 SourceKind = Literal["model_call", "annotation"]
@@ -120,6 +120,21 @@ def build_scope_file(
         files=entries,
         confidence_notes=notes,
         warnings=list(scope.warnings),
+    )
+
+
+def scope_from_file(scope_file: ScopeFile) -> Scope:
+    """Reconstruct the derived scope from a parsed scope file."""
+    return Scope(
+        files=tuple(
+            FileScope(path=entry.path, lines=tuple(entry.lines), reasons=tuple(entry.reasons))
+            for entry in scope_file.files
+        ),
+        warnings=tuple(scope_file.warnings),
+        sources=tuple(
+            SourceSite(kind=source.kind, path=source.path, line=source.line)
+            for source in scope_file.sources
+        ),
     )
 
 
