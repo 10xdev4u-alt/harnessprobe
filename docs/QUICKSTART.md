@@ -39,9 +39,11 @@ note: annotations are user-declared; treated as authoritative
 wrote /tmp/toy-run2/harnessprobe.scope.json
 ```
 
-Commit `harnessprobe.scope.json`. It pins the LDH line set the plugin measures,
-so regenerate it when the scoped code moves: stale pins shrink the measured set
-and show up as growing `not_measured` counts (tracked in #98).
+Commit `harnessprobe.scope.json`. Allowlisted files are scoped whole: the
+plugin re-resolves their lines on every run, so moving source lines cannot
+silently shrink the measured set. Pinned heuristic lines are snapshots; when
+they stop matching the source, the plugin prints a warning and asks you to
+rerun `harnessprobe init`.
 
 ## 3. Measure
 

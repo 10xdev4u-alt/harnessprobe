@@ -17,7 +17,7 @@ promptfoo tests prompts/outputs; vcr.py/respx mock HTTP. Neither asks:
 
 One package, `harnessprobe`:
 
-- `harnessprobe init` derives a heuristic LDH scope file (`harnessprobe.scope/v1`)
+- `harnessprobe init` derives a heuristic LDH scope file (`harnessprobe.scope/v2`)
   with per-file confidence classes.
 - A pytest plugin subsets session coverage to that scope and writes
   `harnessprobe.report/v1` JSON with uncovered LDH line samples.

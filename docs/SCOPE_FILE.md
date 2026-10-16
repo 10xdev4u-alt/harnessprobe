@@ -20,11 +20,11 @@ The command prints a summary and exits 0. Warnings go to standard error. A
 missing path, a path that is not a directory, or a write failure exits 1 with
 an `error:` line on standard error.
 
-## Schema: harnessprobe.scope/v1
+## Schema: harnessprobe.scope/v2
 
 ```json
 {
-  "schema": "harnessprobe.scope/v1",
+  "schema": "harnessprobe.scope/v2",
   "generated_by": "harnessprobe",
   "allowlist": ["legacy/agent.py"],
   "include_tier_b": true,
@@ -32,10 +32,19 @@ an `error:` line on standard error.
   "files": [
     {
       "path": "agent.py",
+      "scope_kind": "pinned-lines",
       "ldh_lines": 3,
       "lines": [14, 18, 21],
       "confidence": "heuristic-high",
       "reasons": ["heuristic:tier-a"]
+    },
+    {
+      "path": "legacy/agent.py",
+      "scope_kind": "whole-file",
+      "ldh_lines": 42,
+      "lines": null,
+      "confidence": "allowlisted",
+      "reasons": ["allowlist"]
     }
   ],
   "confidence_notes": ["annotations are user-declared; treated as authoritative"],
@@ -45,17 +54,24 @@ an `error:` line on standard error.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `schema` | string | Format identifier. The only value is `harnessprobe.scope/v1`. |
+| `schema` | string | Format identifier. The only value is `harnessprobe.scope/v2`. |
 | `generated_by` | string | Tool that wrote the file. |
 | `allowlist` | list of strings | The `--allowlist` patterns, echoed in order. |
 | `include_tier_b` | boolean | Whether tier B reachability ran. |
 | `sources` | list of objects | Every model-call and annotation site found, with `kind`, `path`, and `line`. |
-| `files` | list of objects | Candidate files, each with `path`, `ldh_lines` (count), `lines`, `confidence`, and `reasons`. |
+| `files` | list of objects | Candidate files, each with `path`, `scope_kind`, `ldh_lines` (count), `lines`, `confidence`, and `reasons`. |
 | `confidence_notes` | list of strings | Legend for the confidence classes present, in fixed order. |
 | `warnings` | list of strings | Files skipped during the scan, with the reason. |
 
 `files` is sorted by `path`. `sources` is sorted by `path`, `line`, then
 `kind`. Both orderings are deterministic across runs.
+
+`scope_kind` records how the entry was scoped. A `pinned-lines` entry lists
+the scoped line numbers in `lines`, and `ldh_lines` equals `len(lines)`. A
+`whole-file` entry records `lines: null`: the file is scoped whole by
+declaration, and its lines resolve from the current source when the scope file
+is loaded. `v2` replaced the flat line list of `v1`; regenerate an older file
+with `harnessprobe init`.
 
 ## Confidence vocabulary
 
@@ -68,6 +84,28 @@ in the order below.
 | `allowlisted` | `allowlist` | An `--allowlist` pattern scopes the file whole. |
 | `heuristic-high` | `heuristic:tier-a` | A model call, or a statement consuming one, inside the same function. |
 | `heuristic-low` | `heuristic:tier-b` only | A one-hop call into a tier-A function. |
+
+## Freshness
+
+Scope entries age in two different ways.
+
+Whole-file entries come from `--allowlist` patterns. They carry no pinned
+lines: the plugin resolves their lines from the current source when it loads
+the scope file, so edits that add, remove, or move lines cannot drop them from
+measurement. They never need regeneration.
+
+Pinned-lines entries record the line numbers seen at `init` time. When the
+plugin loads a pinned entry whose lines no longer all resolve to statements,
+it prints:
+
+```
+harnessprobe: warning: agent.py: pinned scope lines no longer resolve to statements; rerun harnessprobe init to refresh the scope file
+```
+
+An entry whose file cannot be read or parsed warns `pinned scope not
+verifiable` instead. Warnings print before the coverage summary, so they are
+visible in CI logs; they do not fail the session. Rerun `harnessprobe init`
+and commit the refreshed file when the warning appears.
 
 ## Limits
 
@@ -98,6 +136,8 @@ file in this order:
 
 When none of these resolves, the plugin stays inert. A scope file you configure
 explicitly that is missing or unreadable fails the session with a usage error.
+Whole-file entries resolve against the pytest rootdir, so the scope file's
+`path` values are relative to that directory.
 
 Session end writes `harnessprobe.report.json` in the rootdir, holding the
 `harnessprobe.report/v1` subset document and printed as a two-line summary. Send

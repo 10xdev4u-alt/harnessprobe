@@ -12,6 +12,13 @@ job summary, and posts a sticky PR comment. It never calls a model.
    $ uvx harnessprobe init . --out harnessprobe.scope.json
    ```
 
+   Keep it fresh by rerunning that command when the scoped code moves.
+   Allowlisted files resolve against the current source on every run and
+   cannot drift. Pinned heuristic lines can: the pytest output then carries a
+   `harnessprobe: warning:` line naming the file and asking for a rerun of
+   `init`. Refresh the file and commit it in the pull request. The action
+   measures against the committed scope file and never rewrites it.
+
 2. Add `.github/workflows/harnessprobe.yml`:
 
    ```yaml
