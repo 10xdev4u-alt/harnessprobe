@@ -36,9 +36,9 @@ $ harnessprobe comment --report harnessprobe.report.json
 ```
 
 Use `harnessprobe gate --report harnessprobe.report.json --min-coverage 60` in
-CI, or the action above. The quickstart walkthrough lives with issue P6; the
-format references are `docs/SCOPE_FILE.md`, `docs/PR_COMMENT.md`, and
-`docs/GITHUB_ACTION.md`.
+CI, or the action above. The walkthrough with before/after numbers is
+`docs/QUICKSTART.md`; the format references are `docs/SCOPE_FILE.md`,
+`docs/PR_COMMENT.md`, and `docs/GITHUB_ACTION.md`.
 
 ## Status
 
