@@ -39,7 +39,9 @@ note: annotations are user-declared; treated as authoritative
 wrote /tmp/toy-run2/harnessprobe.scope.json
 ```
 
-Commit `harnessprobe.scope.json`. It pins the LDH line set the plugin measures.
+Commit `harnessprobe.scope.json`. It pins the LDH line set the plugin measures,
+so regenerate it when the scoped code moves: stale pins shrink the measured set
+and show up as growing `not_measured` counts (tracked in #98).
 
 ## 3. Measure
 
