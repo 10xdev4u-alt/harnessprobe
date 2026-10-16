@@ -1,0 +1,22 @@
+{
+  "schema": "harnessprobe.findings/v1",
+  "findings": [
+    {
+      "bug_class": "tool call dropped",
+      "title": "Tool call silently dropped when the model emits text before the call",
+      "evidence": "https://github.com/10xdev4u-alt/harnessprobe/issues/101",
+      "location": "browser_use/agent/service.py:412"
+    },
+    {
+      "bug_class": "secret leaked in saved history",
+      "title": "Provider API key lands in the saved history file",
+      "evidence": "https://github.com/10xdev4u-alt/harnessprobe/issues/103",
+      "location": "browser_use/agent/message_manager/service.py:88"
+    },
+    {
+      "bug_class": "tool call dropped",
+      "title": "Empty action list treated as a finished task",
+      "evidence": "https://github.com/10xdev4u-alt/harnessprobe/issues/104"
+    }
+  ]
+}
