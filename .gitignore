@@ -13,6 +13,9 @@ dist/
 coverage.xml
 htmlcov/
 .mutmut-cache/
+harnessprobe.report.json
+harnessprobe.gate.md
+harnessprobe.comment.md
 
 # Node
 node_modules/

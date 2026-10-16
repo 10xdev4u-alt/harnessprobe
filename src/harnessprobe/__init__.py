@@ -6,6 +6,7 @@ import importlib
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from harnessprobe.ci import GateResult, GateThresholds, evaluate_gate
     from harnessprobe.comment import BugFinding, Findings, render_pr_comment
     from harnessprobe.coverage_subset import subset_coverage
     from harnessprobe.report import FileSubsetReport, SubsetReport, SubsetTotals, UncoveredSample
@@ -26,6 +27,8 @@ __all__ = [
     "FileScope",
     "FileSubsetReport",
     "Findings",
+    "GateResult",
+    "GateThresholds",
     "Scope",
     "ScopeFile",
     "ScopeFileEntry",
@@ -37,6 +40,7 @@ __all__ = [
     "__version__",
     "build_scope_file",
     "derive_scope",
+    "evaluate_gate",
     "render_pr_comment",
     "scope_from_file",
     "subset_coverage",
@@ -48,6 +52,8 @@ _EXPORTS = {
     "FileScope": "harnessprobe.scope",
     "FileSubsetReport": "harnessprobe.report",
     "Findings": "harnessprobe.comment",
+    "GateResult": "harnessprobe.ci",
+    "GateThresholds": "harnessprobe.ci",
     "Scope": "harnessprobe.scope",
     "ScopeFile": "harnessprobe.scopefile",
     "ScopeFileEntry": "harnessprobe.scopefile",
@@ -58,6 +64,7 @@ _EXPORTS = {
     "UncoveredSample": "harnessprobe.report",
     "build_scope_file": "harnessprobe.scopefile",
     "derive_scope": "harnessprobe.scope",
+    "evaluate_gate": "harnessprobe.ci",
     "render_pr_comment": "harnessprobe.comment",
     "scope_from_file": "harnessprobe.scopefile",
     "subset_coverage": "harnessprobe.coverage_subset",

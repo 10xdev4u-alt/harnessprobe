@@ -1,0 +1,26 @@
+name: HarnessProbe
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  harnessprobe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run HarnessProbe
+        uses: ./
+        with:
+          python-version: "3.12"
+          extra-packages: pytest
+          min-coverage: "85"
+          max-uncovered: "120"
