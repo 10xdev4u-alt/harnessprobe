@@ -207,6 +207,11 @@ def _all_statement_lines(tree: ast.Module) -> set[int]:
     return {node.lineno for node in ast.walk(tree) if isinstance(node, ast.stmt)}
 
 
+def statement_lines(source: str) -> set[int]:
+    """Return the statement line numbers of Python source text."""
+    return _all_statement_lines(ast.parse(source))
+
+
 def _all_functions(tree: ast.Module) -> list[FunctionNode]:
     return [
         node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))

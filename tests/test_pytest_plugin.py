@@ -145,10 +145,29 @@ def test_load_scope_rejects_malformed_json(tmp_path: Path) -> None:
 
 def test_load_scope_rejects_wrong_schema(tmp_path: Path) -> None:
     path = tmp_path / "bad.json"
-    path.write_text('{"schema": "harnessprobe.scope/v2"}', encoding="utf-8")
+    path.write_text('{"schema": "harnessprobe.scope/v3"}', encoding="utf-8")
     with pytest.raises(ValueError) as excinfo:
         load_scope(path)
     assert str(excinfo.value).startswith(f"invalid scope file {path}")
+
+
+def test_load_scope_resolves_whole_file_entries(tmp_path: Path) -> None:
+    module = tmp_path / "mod.py"
+    module.write_text("def f(x):\n    return x + 1\n", encoding="utf-8")
+    path = write_scope_file(
+        build_scope_file(
+            derive_scope(tmp_path, allowlist=("mod.py",)),
+            allowlist=["mod.py"],
+            include_tier_b=True,
+            generated_by="harnessprobe",
+        ),
+        tmp_path / "harnessprobe.scope.json",
+    )
+    module.write_text('"""Doc."""\n\n\ndef f(x):\n    return x + 1\n', encoding="utf-8")
+    assert load_scope(path, repo_root=tmp_path) == Scope(
+        files=(FileScope(path="mod.py", lines=(1, 4, 5), reasons=("allowlist",)),),
+        warnings=(),
+    )
 
 
 def test_summary_lines_reports_counts_and_path(tmp_path: Path) -> None:

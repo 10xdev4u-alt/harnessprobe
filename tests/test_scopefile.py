@@ -41,9 +41,9 @@ def build(
 
 def test_schema_and_json_indent_and_round_trip(fixtures_root: Path) -> None:
     scope_file = build(fixtures_root)
-    assert scope_file.schema == "harnessprobe.scope/v1"
+    assert scope_file.schema == "harnessprobe.scope/v2"
     text = scope_file.to_json()
-    assert text.startswith('{\n  "schema": "harnessprobe.scope/v1",\n  "generated_by":')
+    assert text.startswith('{\n  "schema": "harnessprobe.scope/v2",\n  "generated_by":')
     assert ScopeFile.from_json(text) == scope_file
 
 
@@ -68,6 +68,7 @@ def test_sources_and_entries_map_from_scope(fixtures_root: Path) -> None:
     entries = {entry.path: entry for entry in scope_file.files}
     assert entries["mini_repo/agent.py"] == ScopeFileEntry(
         path="mini_repo/agent.py",
+        scope_kind="pinned-lines",
         ldh_lines=3,
         lines=[14, 18, 21],
         confidence="heuristic-high",
@@ -75,6 +76,7 @@ def test_sources_and_entries_map_from_scope(fixtures_root: Path) -> None:
     )
     assert entries["mini_repo/text_tools.py"] == ScopeFileEntry(
         path="mini_repo/text_tools.py",
+        scope_kind="pinned-lines",
         ldh_lines=5,
         lines=[5, 6, 7, 12, 13],
         confidence="authoritative",
@@ -113,6 +115,7 @@ def test_confidence_tier_b_only_is_heuristic_low() -> None:
     assert scope_file.files == [
         ScopeFileEntry(
             path="caller.py",
+            scope_kind="pinned-lines",
             ldh_lines=1,
             lines=[2],
             confidence="heuristic-low",
@@ -202,6 +205,120 @@ def test_scope_from_file_round_trips_derived_scope(fixtures_root: Path) -> None:
     assert restored.files == scope.files
     assert restored.warnings == scope.warnings
     assert restored.sources == scope.sources
+
+
+def test_allowlisted_entry_records_whole_file_intent(tmp_path: Path) -> None:
+    (tmp_path / "agent.py").write_text("def f(x):\n    return x + 1\n", encoding="utf-8")
+    scope_file = build_scope_file(
+        derive_scope(tmp_path, allowlist=("agent.py",)),
+        allowlist=["agent.py"],
+        include_tier_b=True,
+        generated_by=GENERATED_BY,
+    )
+    assert scope_file.files == [
+        ScopeFileEntry(
+            path="agent.py",
+            scope_kind="whole-file",
+            ldh_lines=2,
+            lines=None,
+            confidence="allowlisted",
+            reasons=["allowlist"],
+        )
+    ]
+
+
+def test_whole_file_scope_resolves_against_current_statements(tmp_path: Path) -> None:
+    module = tmp_path / "mod.py"
+    module.write_text("def f(x):\n    return x + 1\n", encoding="utf-8")
+    scope_file = build_scope_file(
+        derive_scope(tmp_path, allowlist=("mod.py",)),
+        allowlist=["mod.py"],
+        include_tier_b=True,
+        generated_by=GENERATED_BY,
+    )
+    assert scope_file.files[0].lines is None
+    assert scope_file.files[0].ldh_lines == 2
+    module.write_text('"""Doc."""\n\n\ndef f(x):\n    return x + 1\n', encoding="utf-8")
+    restored = scope_from_file(ScopeFile.from_json(scope_file.to_json()), repo_root=tmp_path)
+    assert restored.files == (
+        FileScope(path="mod.py", lines=(1, 4, 5), reasons=("allowlist",)),
+    )
+
+
+def test_whole_file_entry_requires_repo_root(tmp_path: Path) -> None:
+    (tmp_path / "mod.py").write_text("x = 1\n", encoding="utf-8")
+    scope_file = build_scope_file(
+        derive_scope(tmp_path, allowlist=("mod.py",)),
+        allowlist=["mod.py"],
+        include_tier_b=True,
+        generated_by=GENERATED_BY,
+    )
+    with pytest.raises(ValueError, match="repo_root is required"):
+        scope_from_file(ScopeFile.from_json(scope_file.to_json()))
+
+
+def test_whole_file_scope_unresolvable_file_is_skipped(tmp_path: Path) -> None:
+    module = tmp_path / "mod.py"
+    module.write_text("x = 1\n", encoding="utf-8")
+    scope_file = build_scope_file(
+        derive_scope(tmp_path, allowlist=("mod.py",)),
+        allowlist=["mod.py"],
+        include_tier_b=True,
+        generated_by=GENERATED_BY,
+    )
+    module.unlink()
+    restored = scope_from_file(ScopeFile.from_json(scope_file.to_json()), repo_root=tmp_path)
+    assert restored.files == ()
+    assert len(restored.warnings) == 1
+    assert restored.warnings[0].startswith("skipped mod.py: whole-file scope not resolvable")
+
+
+def test_whole_file_scope_without_statements_is_skipped(tmp_path: Path) -> None:
+    module = tmp_path / "mod.py"
+    module.write_text("x = 1\n", encoding="utf-8")
+    scope_file = build_scope_file(
+        derive_scope(tmp_path, allowlist=("mod.py",)),
+        allowlist=["mod.py"],
+        include_tier_b=True,
+        generated_by=GENERATED_BY,
+    )
+    module.write_text("# only a comment\n", encoding="utf-8")
+    restored = scope_from_file(ScopeFile.from_json(scope_file.to_json()), repo_root=tmp_path)
+    assert restored.files == ()
+    assert restored.warnings == ("skipped mod.py: whole-file scope has no statements",)
+
+
+def test_whole_file_entry_rejects_pinned_lines() -> None:
+    with pytest.raises(ValueError, match="whole-file scope must not store pinned lines"):
+        ScopeFileEntry(
+            path="x.py",
+            scope_kind="whole-file",
+            ldh_lines=2,
+            lines=[1, 2],
+            confidence="allowlisted",
+            reasons=["allowlist"],
+        )
+
+
+def test_pinned_entry_rejects_empty_and_mismatched_lines() -> None:
+    with pytest.raises(ValueError, match="pinned-lines scope requires at least one line"):
+        ScopeFileEntry(
+            path="x.py",
+            scope_kind="pinned-lines",
+            ldh_lines=0,
+            lines=[],
+            confidence="heuristic-high",
+            reasons=["heuristic:tier-a"],
+        )
+    with pytest.raises(ValueError, match="pinned-lines scope requires ldh_lines to match lines"):
+        ScopeFileEntry(
+            path="x.py",
+            scope_kind="pinned-lines",
+            ldh_lines=2,
+            lines=[1],
+            confidence="heuristic-high",
+            reasons=["heuristic:tier-a"],
+        )
 
 
 def test_write_scope_file_writes_json(fixtures_root: Path, tmp_path: Path) -> None:
