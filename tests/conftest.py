@@ -5,6 +5,8 @@ import pytest
 
 from harnessprobe import SubsetReport, derive_scope, subset_coverage
 
+pytest_plugins = ("pytester",)
+
 FIXTURES_ROOT = Path(__file__).parent / "fixtures"
 
 

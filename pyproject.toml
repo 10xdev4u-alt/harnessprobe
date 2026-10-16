@@ -8,10 +8,13 @@ version = "0.1.0"
 description = "Extract the LLM-dependent harness scope of a repo and subset coverage.py JSON to it."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2.7"]
+dependencies = ["coverage>=7.4", "pydantic>=2.7"]
 
 [project.scripts]
 harnessprobe = "harnessprobe.cli:main"
+
+[project.entry-points.pytest11]
+harnessprobe = "harnessprobe.pytest_plugin"
 
 [dependency-groups]
 dev = ["pytest", "pytest-cov", "ruff"]
