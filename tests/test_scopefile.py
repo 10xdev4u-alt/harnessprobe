@@ -7,6 +7,7 @@ import pytest
 from harnessprobe import scope_from_file
 from harnessprobe.scope import FileScope, Scope, derive_scope
 from harnessprobe.scopefile import (
+    STALE_SCOPE_HINT,
     ScopeFile,
     ScopeFileEntry,
     ScopeSource,
@@ -319,6 +320,52 @@ def test_pinned_entry_rejects_empty_and_mismatched_lines() -> None:
             confidence="heuristic-high",
             reasons=["heuristic:tier-a"],
         )
+
+
+def _pinned_scope_file(lines: list[int]) -> ScopeFile:
+    return ScopeFile(
+        schema="harnessprobe.scope/v2",
+        generated_by=GENERATED_BY,
+        allowlist=[],
+        include_tier_b=True,
+        sources=[],
+        files=[
+            ScopeFileEntry(
+                path="mod.py",
+                scope_kind="pinned-lines",
+                ldh_lines=len(lines),
+                lines=lines,
+                confidence="heuristic-high",
+                reasons=["heuristic:tier-a"],
+            )
+        ],
+        confidence_notes=[],
+        warnings=[],
+    )
+
+
+def test_stale_pinned_lines_warn_on_load(tmp_path: Path) -> None:
+    (tmp_path / "mod.py").write_text("x = 1\ny = 2\n", encoding="utf-8")
+    restored = scope_from_file(_pinned_scope_file([1, 9]), repo_root=tmp_path)
+    assert restored.files == (
+        FileScope(path="mod.py", lines=(1, 9), reasons=("heuristic:tier-a",)),
+    )
+    assert restored.warnings == (f"mod.py: {STALE_SCOPE_HINT}",)
+
+
+def test_fresh_pinned_lines_load_without_warnings(tmp_path: Path) -> None:
+    (tmp_path / "mod.py").write_text("x = 1\ny = 2\n", encoding="utf-8")
+    restored = scope_from_file(_pinned_scope_file([1, 2]), repo_root=tmp_path)
+    assert restored.warnings == ()
+
+
+def test_pinned_scope_unverifiable_file_warns(tmp_path: Path) -> None:
+    restored = scope_from_file(_pinned_scope_file([1]), repo_root=tmp_path)
+    assert restored.files == (
+        FileScope(path="mod.py", lines=(1,), reasons=("heuristic:tier-a",)),
+    )
+    assert len(restored.warnings) == 1
+    assert restored.warnings[0].startswith("mod.py: pinned scope not verifiable")
 
 
 def test_write_scope_file_writes_json(fixtures_root: Path, tmp_path: Path) -> None:

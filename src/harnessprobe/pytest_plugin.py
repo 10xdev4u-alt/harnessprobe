@@ -140,9 +140,10 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if state is None:
         return
     reporter = session.config.pluginmanager.getplugin("terminalreporter")
+    warning_lines = [f"harnessprobe: warning: {warning}" for warning in state.scope.warnings]
     data = _coverage_data()
     if data is None or not data.measured_files():
-        _write_lines(reporter, [NO_COVERAGE_MESSAGE])
+        _write_lines(reporter, [*warning_lines, NO_COVERAGE_MESSAGE])
         return
     from harnessprobe.coverage_subset import subset_coverage
 
@@ -153,7 +154,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if report_path is not None:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(report.to_json() + "\n", encoding="utf-8")
-    _write_lines(reporter, summary_lines(report, report_path))
+    _write_lines(reporter, [*warning_lines, *summary_lines(report, report_path)])
 
 
 def _configured_path(explicit: str | None, ini: str | None, rootpath: Path) -> Path | None:

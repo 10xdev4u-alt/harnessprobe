@@ -31,6 +31,11 @@ CONFIDENCE_NOTES: dict[Confidence, str] = {
 
 TIER_B_DISABLED_NOTE = "tier B reachability disabled (--no-tier-b)"
 
+STALE_SCOPE_HINT = (
+    "pinned scope lines no longer resolve to statements; "
+    "rerun harnessprobe init to refresh the scope file"
+)
+
 REASON_CONFIDENCE: tuple[tuple[str, Confidence], ...] = (
     ("annotation", "authoritative"),
     ("allowlist", "allowlisted"),
@@ -139,8 +144,10 @@ def scope_from_file(scope_file: ScopeFile, *, repo_root: Path | None = None) -> 
     Pinned-lines entries keep their recorded lines. Whole-file entries resolve
     against the current sources under repo_root, so edits that move lines
     cannot drop them; an entry whose file no longer parses is skipped with a
-    warning. Without repo_root a scope file that holds whole-file entries
-    cannot be reconstructed, and the call raises ValueError.
+    warning. With repo_root, pinned lines are checked against the current
+    sources and drifted entries add a staleness warning. Without repo_root a
+    scope file that holds whole-file entries cannot be reconstructed, and the
+    call raises ValueError.
     """
     warnings_out = list(scope_file.warnings)
     files: list[FileScope] = []
@@ -153,6 +160,7 @@ def scope_from_file(scope_file: ScopeFile, *, repo_root: Path | None = None) -> 
         else:
             lines = tuple(entry.lines or ())
         files.append(FileScope(path=entry.path, lines=lines, reasons=tuple(entry.reasons)))
+    _warn_on_stale_pins(scope_file, repo_root=repo_root, warnings_out=warnings_out)
     return Scope(
         files=tuple(files),
         warnings=tuple(warnings_out),
@@ -193,6 +201,24 @@ def _resolve_whole_file(
         warnings_out.append(f"skipped {entry.path}: whole-file scope has no statements")
         return None
     return tuple(sorted(lines))
+
+
+def _warn_on_stale_pins(
+    scope_file: ScopeFile, *, repo_root: Path | None, warnings_out: list[str]
+) -> None:
+    if repo_root is None:
+        return
+    for entry in scope_file.files:
+        if entry.scope_kind != "pinned-lines" or not entry.lines:
+            continue
+        try:
+            source = (repo_root / entry.path).read_text(encoding="utf-8", errors="replace")
+            statements = statement_lines(source)
+        except (OSError, SyntaxError) as exc:
+            warnings_out.append(f"{entry.path}: pinned scope not verifiable ({exc})")
+            continue
+        if any(line not in statements for line in entry.lines):
+            warnings_out.append(f"{entry.path}: {STALE_SCOPE_HINT}")
 
 
 def write_scope_file(scope_file: ScopeFile, path: Path) -> Path:
