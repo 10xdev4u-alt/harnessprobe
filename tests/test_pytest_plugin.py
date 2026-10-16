@@ -24,7 +24,7 @@ from harnessprobe.pytest_plugin import (
 )
 from harnessprobe.report import SubsetReport, SubsetTotals
 from harnessprobe.scope import FileScope, Scope, derive_scope
-from harnessprobe.scopefile import build_scope_file, write_scope_file
+from harnessprobe.scopefile import ScopeFile, build_scope_file, write_scope_file
 
 MODULE_SOURCE = """\
 class _Response:
@@ -145,10 +145,29 @@ def test_load_scope_rejects_malformed_json(tmp_path: Path) -> None:
 
 def test_load_scope_rejects_wrong_schema(tmp_path: Path) -> None:
     path = tmp_path / "bad.json"
-    path.write_text('{"schema": "harnessprobe.scope/v2"}', encoding="utf-8")
+    path.write_text('{"schema": "harnessprobe.scope/v3"}', encoding="utf-8")
     with pytest.raises(ValueError) as excinfo:
         load_scope(path)
     assert str(excinfo.value).startswith(f"invalid scope file {path}")
+
+
+def test_load_scope_resolves_whole_file_entries(tmp_path: Path) -> None:
+    module = tmp_path / "mod.py"
+    module.write_text("def f(x):\n    return x + 1\n", encoding="utf-8")
+    path = write_scope_file(
+        build_scope_file(
+            derive_scope(tmp_path, allowlist=("mod.py",)),
+            allowlist=["mod.py"],
+            include_tier_b=True,
+            generated_by="harnessprobe",
+        ),
+        tmp_path / "harnessprobe.scope.json",
+    )
+    module.write_text('"""Doc."""\n\n\ndef f(x):\n    return x + 1\n', encoding="utf-8")
+    assert load_scope(path, repo_root=tmp_path) == Scope(
+        files=(FileScope(path="mod.py", lines=(1, 4, 5), reasons=("allowlist",)),),
+        warnings=(),
+    )
 
 
 def test_summary_lines_reports_counts_and_path(tmp_path: Path) -> None:
@@ -549,6 +568,28 @@ def test_session_end_warns_without_coverage(pytester: pytest.Pytester) -> None:
     result.assert_outcomes(passed=1)
     assert "harnessprobe: no coverage data found" in result.stdout.str()
     assert not (pytester.path / "harnessprobe.report.json").exists()
+
+
+def test_session_end_prints_scope_warnings(pytester: pytest.Pytester) -> None:
+    _build_project(pytester)
+    scope_path = pytester.path / "harnessprobe.scope.json"
+    scope_file = ScopeFile.from_json(scope_path.read_text(encoding="utf-8"))
+    stale = scope_file.model_copy(
+        update={
+            "files": [
+                entry.model_copy(update={"lines": [line + 1000 for line in entry.lines or []]})
+                for entry in scope_file.files
+            ]
+        }
+    )
+    write_scope_file(stale, scope_path)
+    result = pytester.run("python", "-m", "pytest", "-q")
+    result.assert_outcomes(passed=1)
+    stdout = result.stdout.str()
+    warning = "harnessprobe: warning: mod.py: pinned scope lines no longer resolve to statements"
+    assert warning in stdout
+    assert "rerun harnessprobe init to refresh the scope file" in stdout
+    assert stdout.index(warning) < stdout.index("harnessprobe: no coverage data found")
 
 
 def test_missing_explicit_scope_is_usage_error(pytester: pytest.Pytester) -> None:

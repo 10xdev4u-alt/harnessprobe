@@ -53,7 +53,7 @@ def test_init_writes_scope_file_and_prints_summary(
     assert captured.out == expected
     assert captured.err == ""
     scope_file = ScopeFile.from_json(out.read_text(encoding="utf-8"))
-    assert scope_file.schema == "harnessprobe.scope/v1"
+    assert scope_file.schema == "harnessprobe.scope/v2"
     assert scope_file.generated_by == "harnessprobe"
     assert [entry.path for entry in scope_file.files] == [
         "agent.py",
@@ -128,6 +128,10 @@ def test_init_allowlist_flags_echo_and_scope(
     assert "note: allowlisted files are scoped whole by user declaration\n" in captured.out
     scope_file = ScopeFile.from_json(out.read_text(encoding="utf-8"))
     assert scope_file.allowlist == ["cli.py", "parsing.py"]
+    entries = {entry.path: entry for entry in scope_file.files}
+    assert entries["cli.py"].scope_kind == "whole-file"
+    assert entries["cli.py"].lines is None
+    assert entries["agent.py"].scope_kind == "pinned-lines"
 
 
 def test_init_missing_path_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

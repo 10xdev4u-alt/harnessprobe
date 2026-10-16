@@ -42,7 +42,7 @@ def resolve_scope_path(explicit: str | None, ini: str | None, rootpath: Path) ->
     return default if default.is_file() else None
 
 
-def load_scope(path: Path) -> Scope:
+def load_scope(path: Path, *, repo_root: Path | None = None) -> Scope:
     """Read and parse a scope file into a scope, raising ValueError when invalid."""
     from harnessprobe.scopefile import ScopeFile, scope_from_file
 
@@ -50,7 +50,7 @@ def load_scope(path: Path) -> Scope:
         scope_file = ScopeFile.from_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError(f"invalid scope file {path}: {exc}") from exc
-    return scope_from_file(scope_file)
+    return scope_from_file(scope_file, repo_root=repo_root)
 
 
 def coverage_dict_from_data(
@@ -124,7 +124,7 @@ def pytest_configure(config: pytest.Config) -> None:
             raise pytest.UsageError(f"harnessprobe: scope file not found: {scope_path}")
         return
     try:
-        scope = load_scope(scope_path)
+        scope = load_scope(scope_path, repo_root=rootpath)
     except ValueError as exc:
         raise pytest.UsageError(f"harnessprobe: {exc}") from exc
     config.stash[_STATE_KEY] = _PluginState(
@@ -140,9 +140,10 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if state is None:
         return
     reporter = session.config.pluginmanager.getplugin("terminalreporter")
+    warning_lines = [f"harnessprobe: warning: {warning}" for warning in state.scope.warnings]
     data = _coverage_data()
     if data is None or not data.measured_files():
-        _write_lines(reporter, [NO_COVERAGE_MESSAGE])
+        _write_lines(reporter, [*warning_lines, NO_COVERAGE_MESSAGE])
         return
     from harnessprobe.coverage_subset import subset_coverage
 
@@ -153,7 +154,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if report_path is not None:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(report.to_json() + "\n", encoding="utf-8")
-    _write_lines(reporter, summary_lines(report, report_path))
+    _write_lines(reporter, [*warning_lines, *summary_lines(report, report_path)])
 
 
 def _configured_path(explicit: str | None, ini: str | None, rootpath: Path) -> Path | None:
