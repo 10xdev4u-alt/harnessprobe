@@ -86,3 +86,30 @@ candidate set and misses those callers.
 Annotations are the only signal you control directly. Put `# harness:llm-source`
 on a `def` line to scope its whole body, or on a single statement to scope that
 statement. The file keeps the annotation site in `sources` either way.
+
+## Using the scope file in pytest
+
+Install the package and the pytest plugin loads on its own. It resolves a scope
+file in this order:
+
+1. `--harnessprobe-scope PATH`
+2. the `harnessprobe_scope` ini option
+3. `harnessprobe.scope.json` in the pytest rootdir
+
+When none of these resolves, the plugin stays inert. A scope file you configure
+explicitly that is missing or unreadable fails the session with a usage error.
+
+Session end writes `harnessprobe.report.json` in the rootdir, holding the
+`harnessprobe.report/v1` subset document and printed as a two-line summary. Send
+the report elsewhere with `--harnessprobe-report PATH`, or keep the summary and
+skip the file with `--harnessprobe-no-report`.
+
+Coverage data must exist when the session ends:
+
+```console
+coverage run --branch -m pytest
+```
+
+pytest-cov works too. Without coverage data the plugin prints
+`harnessprobe: no coverage data found` and writes nothing. Opt out of the whole
+plugin with `-p no:harnessprobe`.
