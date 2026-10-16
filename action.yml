@@ -1,0 +1,168 @@
+name: HarnessProbe
+description: Measure LDH scope coverage, gate on thresholds, and post a bug-class-first PR comment.
+author: 10xdev4u-alt
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  scope-file:
+    description: Scope file produced by `harnessprobe init`.
+    default: harnessprobe.scope.json
+  pytest-args:
+    description: Arguments for pytest (test paths and options), split on whitespace.
+    default: tests
+  coverage-args:
+    description: Arguments for `coverage run`, split on whitespace.
+    default: --branch
+  run-tests:
+    description: Run pytest under coverage. Set to "false" when the report already exists.
+    default: "true"
+  report-file:
+    description: Path where the pytest plugin writes the subset report.
+    default: harnessprobe.report.json
+  harnessprobe-package:
+    description: Package spec to install for HarnessProbe. Empty installs the action checkout.
+    default: ""
+  extra-packages:
+    description: Extra pip packages to install, split on whitespace.
+    default: pytest
+  python-version:
+    description: Python version for actions/setup-python. Empty uses the runner default.
+    default: ""
+  min-coverage:
+    description: Minimum LDH coverage percent. Empty disables the check.
+    default: ""
+  max-uncovered:
+    description: Maximum uncovered LDH lines. Empty disables the check.
+    default: ""
+  fail-on-findings:
+    description: Fail the gate when any findings are attached.
+    default: "false"
+  findings-file:
+    description: Findings JSON for the gate and comment. Empty disables findings.
+    default: ""
+  previous-report:
+    description: Previous report JSON for the coverage trend line.
+    default: ""
+  comment:
+    description: Create or update the sticky PR comment.
+    default: "true"
+
+outputs:
+  covered-pct:
+    description: LDH scope coverage percent, empty when nothing was measured.
+    value: ${{ steps.gate.outputs.covered-pct }}
+  scope-lines:
+    description: Measured LDH scope lines.
+    value: ${{ steps.gate.outputs.scope-lines }}
+  executed:
+    description: Executed LDH scope lines.
+    value: ${{ steps.gate.outputs.executed }}
+  uncovered:
+    description: Uncovered LDH scope lines.
+    value: ${{ steps.gate.outputs.uncovered }}
+  not-measured:
+    description: Scope lines absent from the coverage data.
+    value: ${{ steps.gate.outputs.not-measured }}
+  findings-count:
+    description: Findings attached to this run.
+    value: ${{ steps.gate.outputs.findings-count }}
+  gate-passed:
+    description: Whether every configured threshold passed.
+    value: ${{ steps.gate.outputs.gate-passed }}
+  gate-reasons:
+    description: Semicolon-joined gate failure reasons.
+    value: ${{ steps.gate.outputs.gate-reasons }}
+  report-path:
+    description: Path of the subset report.
+    value: ${{ inputs.report-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      if: ${{ inputs.python-version != '' }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install HarnessProbe
+      shell: bash
+      env:
+        HARNESSPROBE_PACKAGE: ${{ inputs.harnessprobe-package }}
+        EXTRA_PACKAGES: ${{ inputs.extra-packages }}
+      run: |
+        set -euo pipefail
+        package="${HARNESSPROBE_PACKAGE:-$GITHUB_ACTION_PATH}"
+        python -m pip install --disable-pip-version-check "$package"
+        if [ -n "$EXTRA_PACKAGES" ]; then
+          read -r -a extras <<< "$EXTRA_PACKAGES"
+          python -m pip install --disable-pip-version-check "${extras[@]}"
+        fi
+
+    - name: Run tests under coverage
+      if: ${{ inputs.run-tests == 'true' }}
+      shell: bash
+      env:
+        PYTEST_ARGS: ${{ inputs.pytest-args }}
+        COVERAGE_ARGS: ${{ inputs.coverage-args }}
+        SCOPE_FILE: ${{ inputs.scope-file }}
+        REPORT_FILE: ${{ inputs.report-file }}
+      run: |
+        set -euo pipefail
+        read -r -a coverage_args <<< "$COVERAGE_ARGS"
+        read -r -a pytest_args <<< "$PYTEST_ARGS"
+        python -m coverage run "${coverage_args[@]}" -m pytest "${pytest_args[@]}" \
+          --harnessprobe-scope "$SCOPE_FILE" \
+          --harnessprobe-report "$REPORT_FILE"
+
+    - name: Evaluate gate
+      id: gate
+      shell: bash
+      env:
+        REPORT_FILE: ${{ inputs.report-file }}
+        MIN_COVERAGE: ${{ inputs.min-coverage }}
+        MAX_UNCOVERED: ${{ inputs.max-uncovered }}
+        FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        FINDINGS_FILE: ${{ inputs.findings-file }}
+      run: |
+        set -uo pipefail
+        if [ ! -f "$REPORT_FILE" ]; then
+          echo "::error::harnessprobe: no report at $REPORT_FILE; the plugin did not run"
+          exit 1
+        fi
+        args=(gate --report "$REPORT_FILE" --summary-out harnessprobe.gate.md --outputs "$GITHUB_OUTPUT")
+        if [ -n "$MIN_COVERAGE" ]; then args+=(--min-coverage "$MIN_COVERAGE"); fi
+        if [ -n "$MAX_UNCOVERED" ]; then args+=(--max-uncovered "$MAX_UNCOVERED"); fi
+        if [ "$FAIL_ON_FINDINGS" = "true" ]; then args+=(--fail-on-findings); fi
+        if [ -n "$FINDINGS_FILE" ]; then args+=(--findings "$FINDINGS_FILE"); fi
+        harnessprobe "${args[@]}"
+
+    - name: Append gate summary
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        if [ -f harnessprobe.gate.md ]; then
+          cat harnessprobe.gate.md >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Post sticky PR comment
+      if: ${{ always() && inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPORT_FILE: ${{ inputs.report-file }}
+        FINDINGS_FILE: ${{ inputs.findings-file }}
+        PREVIOUS_REPORT: ${{ inputs.previous-report }}
+      run: |
+        set -uo pipefail
+        if [ ! -f "$REPORT_FILE" ]; then
+          echo "::warning::harnessprobe: no report at $REPORT_FILE; comment skipped"
+          exit 0
+        fi
+        args=(post --report "$REPORT_FILE" --pr "$PR_NUMBER" --comment-out harnessprobe.comment.md)
+        if [ -n "$FINDINGS_FILE" ]; then args+=(--findings "$FINDINGS_FILE"); fi
+        if [ -n "$PREVIOUS_REPORT" ]; then args+=(--previous "$PREVIOUS_REPORT"); fi
+        harnessprobe "${args[@]}"

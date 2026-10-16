@@ -1,0 +1,27 @@
+name: HarnessProbe
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  harnessprobe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Run HarnessProbe
+        uses: 10xdev4u-alt/harnessprobe@main
+        with:
+          # Commit this file first: harnessprobe init . --out harnessprobe.scope.json
+          scope-file: harnessprobe.scope.json
+          # Point at the test paths that exercise your harness code.
+          pytest-args: tests
+          # Both checks are optional; drop either line to disable it.
+          min-coverage: "60"
+          max-uncovered: "200"
+          # Attach findings to render the bug-class section.
+          # findings-file: harnessprobe.findings.json
